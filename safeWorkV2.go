@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrInternal = errors.New("internal data error")
+	ErrInternal = errors.New("component internal error") // 组件内部出错
 )
 
 type Work struct {
@@ -36,16 +36,14 @@ func (sw *SerialExecutor) Get(key string) ([]byte, error) {
 		defer sw.l.Unlock()
 		if i, ok := sw.m.Load(key); ok {
 			if v, ok1 := i.(*Work); ok1 {
-				// 拿到数据且数据格式正确
+				atomic.AddInt64(&v.reqCount, 1)
 				work = v
 			} else {
-				// 拿到的数据格式不正确
 				work = nil
 			}
 		} else {
-			// 没有拿到数据，创建数据
 			l := &sync.RWMutex{}
-			v := &Work{l, nil, nil, 0}
+			v := &Work{l, nil, nil, 1}
 			sw.m.Store(key, v)
 			work = v
 		}
@@ -53,21 +51,18 @@ func (sw *SerialExecutor) Get(key string) ([]byte, error) {
 	
 	if work == nil {
 		sw.m.Delete(key)
-		return nil, ErrInternal
+		panic(ErrInternal)
 	} else {
 		func() {
-			atomic.AddInt64(&work.reqCount, 1)
 			work.l.Lock()
 			defer work.l.Unlock()
 			
 			// 当请求数量为0时删除字典键值
 			defer func() {
-				if work != nil {
-					if rc := atomic.LoadInt64(&work.reqCount); rc == 0 {
-						sw.l.Lock()
-						defer sw.l.Unlock()
-						sw.m.Delete(key)
-					}
+				sw.l.Lock()
+				defer sw.l.Unlock()
+				if rc := atomic.LoadInt64(&work.reqCount); rc == 0 {
+					sw.m.Delete(key)
 				}
 			}()
 			
