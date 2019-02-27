@@ -49,3 +49,19 @@ func TestNewSWork(t *testing.T) {
 	fmt.Println("v  : ", v)
 	time.Sleep(time.Hour)
 }
+
+var m = map[string]string{}
+
+func TestSafe(t *testing.T) {
+	
+	f := func(key string) ([]byte, error) {
+		m[key] = key
+		time.Sleep(time.Millisecond)
+		return nil, nil
+	}
+	
+	sw := NewSerialExecutor(f)
+	for i := 0; i < 10000; i++ {
+		sw.Get("")
+	}
+}
